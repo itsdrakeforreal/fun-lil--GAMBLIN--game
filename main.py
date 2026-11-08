@@ -1,0 +1,208 @@
+
+import pygame
+import random
+import asyncio
+import math
+
+async def main():
+
+    pygame.init()
+    try:
+        pygame.mixer.init()
+        print("Audio Initialized!")
+    except pygame.error as e:
+        print("Audio unavailiable:", e)
+
+    screen = pygame.display.set_mode((896, 896))
+
+    MAP_WIDTH = 800
+    MAP_HEIGHT = 800
+    TILE_SIZE = 128
+
+    # GRASS IMAGE LOADING
+    grass_light = pygame.image.load('images/light_grass.png').convert_alpha()
+    grass_dark = pygame.image.load('images/dark_grass.png').convert_alpha()
+
+    grass_light = pygame.transform.scale(grass_light, (128, 128))
+    grass_dark = pygame.transform.scale(grass_dark, (128, 128))
+
+    map_data = []
+
+    for y in range(7):
+        row = []
+        for x in range(7):
+            if (x + y) % 2 == 0:
+                row.append(grass_light)
+            else:
+                row.append(grass_dark)
+        map_data.append(row)
+
+    # CHEST IMAGE LOADING
+    tile_x = random.randint(0, 6)
+    tile_y = random.randint(0, 6)
+
+    chest_img = pygame.image.load('images/chest.png').convert_alpha()
+    chest_img = pygame.transform.scale(chest_img, (128, 128))
+    chest_opened_img = pygame.image.load('images/chest_opened.png').convert_alpha()
+    chest_opened_img = pygame.transform.scale(chest_opened_img, (128, 128))
+
+    chest_rect = chest_img.get_rect()
+    chest_rect.center = (
+        tile_x * TILE_SIZE + TILE_SIZE // 2,
+        tile_y * TILE_SIZE + TILE_SIZE // 2
+    )
+
+    # CHEST LOAD TIMES
+    chest_times = {
+        "common": 2,
+        "uncommon": 5,
+        "rare": 10,
+        "legendary": 15
+    }
+
+    # OTHER IMAGE LOADING
+    wood_img = pygame.image.load('images/wood.png').convert_alpha()
+    wood_img = pygame.transform.scale(wood_img, (80, 80))
+
+    try:
+        chest_sfx = pygame.mixer.Sound('sounds/drum_buildup.ogg')
+        print("Sound loaded!")
+    except pygame.error as e:
+        print("Sound loading failed:", repr(e))
+        chest_sfx = None
+
+    running = True
+    clock = pygame.time.Clock()
+
+    chest_progress = 0
+    chest_opened = False
+    opened_timer = 0
+    animation_time = 0
+    playing = False
+    item_roll = 0
+
+    while running:
+
+        delta_time = clock.tick(60) / 1000
+        animation_time += delta_time
+
+        # EVENTS
+        for event in pygame.event.get():
+
+            if event.type == pygame.QUIT:
+                running = False
+
+            # CLICK
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    if chest_rect.collidepoint(event.pos):
+                        print("Chest Clicked!")
+
+        # MOUSE
+        mouse_held = pygame.mouse.get_pressed()[0]
+        mouse_pos = pygame.mouse.get_pos()
+
+        screen.fill((255, 255, 255))
+
+        # MAP DRAW
+        for y, row in enumerate(map_data):
+            for x, tile in enumerate(row):
+                screen.blit(tile, (x * TILE_SIZE, y * TILE_SIZE))
+
+        # CHEST DRAW
+        if not chest_opened:
+            shake_x = 0
+            shake_y = 0
+
+            if mouse_held and chest_rect.collidepoint(mouse_pos):
+                shake_x = random.randint(-3, 3)
+                shake_y = random.randint(-2, 2)
+
+            screen.blit(chest_img, (chest_rect.x + shake_x, chest_rect.y + shake_y))
+
+        else:
+            screen.blit(chest_opened_img, chest_rect)
+
+            if item_roll == 1:
+                movement_y_item = math.sin(animation_time * 3) * 10
+
+                screen.blit(
+                    wood_img,
+                    (chest_rect.x + 20, chest_rect.y - 30 + movement_y_item)
+                )
+
+        # CHEST HELD
+        if not chest_opened and mouse_held and chest_rect.collidepoint(mouse_pos):
+            chest_progress += delta_time
+
+            if not playing:
+                if chest_sfx:
+                    chest_sfx.play()
+                playing = True
+
+        else:
+            if playing:
+                if chest_sfx:
+                    chest_sfx.stop()
+                playing = False
+
+            if not chest_opened:
+                chest_progress = 0
+
+        # CHEST PROGRESS
+        if not chest_opened and mouse_held and chest_rect.collidepoint(mouse_pos):
+
+            progress = min(chest_progress / chest_times["common"], 1)
+
+            mouse_x, mouse_y = mouse_pos
+            ring_rect = pygame.Rect(mouse_x - 25, mouse_y - 20, 50 ,50)
+
+            pygame.draw.arc(screen, (70, 70, 70), ring_rect,
+                            0, math.pi * 2, 3)
+
+            pygame.draw.arc(screen, (100, 200, 255), ring_rect,
+                             math.pi / 2,
+                             math.pi / 2 + math.pi * 2 * progress, 3)
+
+        # CHEST OPEN
+        if chest_progress >= chest_times["common"] and not chest_opened:
+
+            print("Chest Opened!")
+
+            item_roll = random.randint(0, 1)
+
+            if item_roll == 0:
+                print("NOTHING!")
+            else:
+                print("WOOD!")
+
+            chest_opened = True
+            opened_timer = 0
+            chest_progress = 0
+
+
+            playing = False
+
+        if chest_opened:
+            opened_timer += delta_time
+
+            if opened_timer >= 1:
+                tile_x = random.randint(0, 6)
+                tile_y = random.randint(0, 6)
+
+                chest_rect.center = (
+                tile_x * TILE_SIZE + TILE_SIZE // 2,
+                tile_y * TILE_SIZE + TILE_SIZE // 2
+                )
+
+                chest_opened = False
+                item_roll = 0
+
+        pygame.display.flip()
+
+        # IMPORTANT FOR BROWSER COMPATIBILITY
+        await asyncio.sleep(0)
+
+    pygame.quit()
+
+asyncio.run(main())
